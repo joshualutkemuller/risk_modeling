@@ -157,6 +157,17 @@ If you prefer to handle rebalancing externally, disable the agent by passing
 helpers.  This keeps the legacy report structure intact while still allowing you
 to plug in alternative post-processing steps.
 
+For a dedicated command-line demo that prints the rebalancing summary alongside
+the full workflow report, run the included helper script.  It accepts the same
+frequency and transaction-cost knobs as the pipeline constructor:
+
+```bash
+python run_rebalancer.py --rebalance-frequencies 5,21,63 --transaction-cost 0.00025
+```
+
+The script emits the recommended cadence and detailed turnover statistics to
+stdout so you can quickly compare scenarios without wiring up your own harness.
+
 ### Optimizing an S&P 500 universe
 
 To spin up the full pipeline with the current S&P 500 constituents, leverage

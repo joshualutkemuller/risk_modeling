@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Sequence
 from typing import Sequence
 
 import numpy as np
@@ -24,6 +25,18 @@ class RebalancingScenario:
     expected_annual_cost: float
     net_annualized_return: float
 
+    def as_dict(self) -> dict[str, float | int]:
+        """Serialize the scenario metrics for downstream consumers."""
+
+        return {
+            "frequency": int(self.frequency),
+            "annualized_return": float(self.annualized_return),
+            "annualized_volatility": float(self.annualized_volatility),
+            "average_turnover": float(self.average_turnover),
+            "expected_annual_cost": float(self.expected_annual_cost),
+            "net_annualized_return": float(self.net_annualized_return),
+        }
+
 
 @dataclass(frozen=True)
 class RebalancingReport:
@@ -32,6 +45,56 @@ class RebalancingReport:
     scenarios: tuple[RebalancingScenario, ...]
     recommended_frequency: int
     transaction_cost: float
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the report in a JSON-serializable structure."""
+
+        return {
+            "recommended_frequency": int(self.recommended_frequency),
+            "transaction_cost": float(self.transaction_cost),
+            "scenarios": [scenario.as_dict() for scenario in self.scenarios],
+        }
+
+    def pretty_format(self) -> str:
+        """Render a human-readable table of the simulated scenarios."""
+
+        if not self.scenarios:
+            return "(no scenarios evaluated)"
+
+        headers = (
+            "Freq",
+            "Ann Return",
+            "Ann Vol",
+            "Avg Turnover",
+            "Annual Cost",
+            "Net Return",
+        )
+        rows = [headers]
+        for scenario in self.scenarios:
+            rows.append(
+                (
+                    f"{scenario.frequency:>5d}",
+                    f"{scenario.annualized_return:>10.2%}",
+                    f"{scenario.annualized_volatility:>10.2%}",
+                    f"{scenario.average_turnover:>12.2%}",
+                    f"{scenario.expected_annual_cost:>11.2%}",
+                    f"{scenario.net_annualized_return:>10.2%}",
+                )
+            )
+
+        col_widths = [max(len(row[idx]) for row in rows) for idx in range(len(headers))]
+        formatted_rows = []
+        for row in rows:
+            formatted_rows.append(
+                " ".join(cell.rjust(col_widths[idx]) for idx, cell in enumerate(row))
+            )
+        summary = (
+            f"Recommended frequency: every {self.recommended_frequency} trading days\n"
+        )
+        summary += "Transaction cost assumption: "
+        summary += f"{self.transaction_cost:.4%}\n"
+        summary += "\n".join(formatted_rows)
+        return summary
 
 
 class RebalancingOptimizationAgent:

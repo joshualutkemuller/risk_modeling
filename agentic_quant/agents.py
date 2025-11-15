@@ -187,7 +187,9 @@ class YahooFinanceDataAgent:
         returns_np = np.diff(prices_np, axis=0) / prices_np[:-1]
 
         market_data = MarketData(
-            tickers=self._tickers, prices=prices_np, returns=returns_np
+            tickers=self._tickers,
+            prices=prices_np,
+            returns=returns_np,
         )
         blackboard["market_data"] = market_data
 
@@ -312,19 +314,19 @@ class PandasDataReaderDataAgent:
         available = [ticker for ticker in self._tickers if ticker not in failed]
         if not available:
             raise RuntimeError(
-                "Unable to assemble any price history from pandas_datareader after dropping failures"
+                "Unable to assemble any price history from pandas_datareader "
+                "after dropping failures"
             )
 
         prices = prices.loc[:, available]
 
-            raise ValueError(f"Missing data for tickers: {', '.join(missing)}")
-
-        prices = prices.loc[:, self._tickers]
         prices_np = prices.to_numpy(dtype=float)
         returns_np = np.diff(prices_np, axis=0) / prices_np[:-1]
 
         market_data = MarketData(
-            tickers=tuple(available), prices=prices_np, returns=returns_np
+            tickers=tuple(available),
+            prices=prices_np,
+            returns=returns_np,
         )
         blackboard["market_data"] = market_data
 
@@ -333,10 +335,6 @@ class PandasDataReaderDataAgent:
             warnings = dict(existing)
             warnings["missing_tickers"] = sorted(set(failed))
             blackboard["data_warnings"] = warnings
-
-            tickers=self._tickers, prices=prices_np, returns=returns_np
-        )
-        blackboard["market_data"] = market_data
 
 
 class FactorSignalAgent:
@@ -391,7 +389,11 @@ class RiskAgent:
         window = market_data.returns[-self._lookback :]
         covariance = np.cov(window, rowvar=False, ddof=1)
 
-        report = RiskReport(tickers=market_data.tickers, covariance=covariance, lookback=self._lookback)
+        report = RiskReport(
+            tickers=market_data.tickers,
+            covariance=covariance,
+            lookback=self._lookback,
+        )
         blackboard["risk_report"] = report
 
 
@@ -495,12 +497,13 @@ class ReportAgent:
         lines.append("=" * 55)
         lines.append(f"Target annualized return: {plan.target_return:.2%}")
         lines.append(
-            f"Achieved by {plan.performance.expected_return:.2%} expected return "
+            "Achieved by "
+            f"{plan.performance.expected_return:.2%} expected return "
             f"with {plan.performance.volatility:.2%} volatility"
         )
         lines.append("\nWeights after risk overlay:")
         for ticker, weight in zip(plan.tickers, plan.weights):
-            lines.append(f"  {ticker}: {weight: .2%}")
+            lines.append(f"  {ticker}: {weight:.2%}")
         lines.append(
             "\nGlobal minimum variance portfolio (reference): "
             f"{plan.gmvp_performance.expected_return:.2%} expected return, "

@@ -55,10 +55,21 @@ class AgentPipeline:
     def __init__(self, agents: Sequence[Agent]):
         if not agents:
             raise ValueError("agents must contain at least one agent")
-        self._agents: Sequence[Agent] = agents
+        self._agents: list[Agent] = list(agents)
 
     def __iter__(self) -> Iterator[Agent]:
         return iter(self._agents)
+
+    @property
+    def agents(self) -> list[Agent]:
+        """Expose the underlying agent list for inspection or mutation."""
+
+        return self._agents
+
+    def append(self, agent: Agent) -> None:
+        """Append an agent to the end of the pipeline."""
+
+        self._agents.append(agent)
 
     def run(self, blackboard: Blackboard | None = None) -> Blackboard:
         board = blackboard or Blackboard()

@@ -89,6 +89,105 @@ class DataAgent:
         blackboard["market_data"] = market_data
 
 
+class YahooFinanceDataAgent:
+    """Fetches historical prices from Yahoo Finance using :mod:`yfinance`."""
+
+    def __init__(
+        self,
+        tickers: Sequence[str],
+        *,
+        period: str | None = "5y",
+        start: str | None = None,
+        end: str | None = None,
+        interval: str = "1d",
+        auto_adjust: bool = True,
+        min_history: int = 252,
+    ) -> None:
+        if not tickers:
+            raise ValueError("tickers must contain at least one symbol")
+        if min_history < 2:
+            raise ValueError("min_history must be at least 2")
+        self.name = "data_agent"
+        self._tickers = list(tickers)
+        self._period = period
+        self._start = start
+        self._end = end
+        self._interval = interval
+        self._auto_adjust = auto_adjust
+        self._min_history = int(min_history)
+
+    def run(self, blackboard: Blackboard) -> None:
+        try:
+            import pandas as pd  # type: ignore
+        except ImportError as exc:  # pragma: no cover - defensive import
+            raise RuntimeError(
+                "pandas is required to fetch historical data via Yahoo Finance"
+            ) from exc
+
+        try:
+            import yfinance as yf  # type: ignore
+        except ImportError as exc:  # pragma: no cover - defensive import
+            raise RuntimeError(
+                "yfinance is required to fetch historical data via Yahoo Finance"
+            ) from exc
+
+        data = yf.download(
+            tickers=" ".join(self._tickers),
+            period=self._period,
+            start=self._start,
+            end=self._end,
+            interval=self._interval,
+            auto_adjust=self._auto_adjust,
+            progress=False,
+        )
+
+        if data.empty:
+            raise ValueError("No price history returned from Yahoo Finance")
+
+        if isinstance(data.columns, pd.MultiIndex):
+            # Prioritize adjusted close; fall back to close if necessary.
+            if ("Adj Close" in data.columns.levels[0]) or (
+                "Adj Close" in data.columns.get_level_values(0)
+            ):
+                prices = data["Adj Close"].copy()
+            elif ("Close" in data.columns.levels[0]) or (
+                "Close" in data.columns.get_level_values(0)
+            ):
+                prices = data["Close"].copy()
+            else:
+                raise ValueError("Unable to locate close price columns in Yahoo data")
+        else:
+            # Single ticker download returns a flat frame with close prices.
+            prices = data.copy()
+            if "Adj Close" in prices:
+                prices = prices[["Adj Close"]]
+            elif "Close" in prices:
+                prices = prices[["Close"]]
+
+        if isinstance(prices, pd.Series):
+            prices = prices.to_frame(name=self._tickers[0])
+
+        prices = prices.dropna(how="any")
+        if prices.shape[0] < self._min_history:
+            raise ValueError(
+                "Not enough observations returned from Yahoo Finance for the requested window"
+            )
+
+        # Ensure the columns align with the requested ticker order.
+        missing = [ticker for ticker in self._tickers if ticker not in prices.columns]
+        if missing:
+            raise ValueError(f"Missing data for tickers: {', '.join(missing)}")
+        prices = prices.loc[:, self._tickers]
+
+        prices_np = prices.to_numpy(dtype=float)
+        returns_np = np.diff(prices_np, axis=0) / prices_np[:-1]
+
+        market_data = MarketData(
+            tickers=self._tickers, prices=prices_np, returns=returns_np
+        )
+        blackboard["market_data"] = market_data
+
+
 class FactorSignalAgent:
     """Computes expected returns using a simple momentum factor model."""
 

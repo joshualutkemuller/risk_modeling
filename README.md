@@ -34,19 +34,73 @@ This repository contains two complementary components:
    agent applies leverage and concentration limits.
 
    If you prefer to integrate the workflow into your own script or notebook
-   without invoking the CLI entry point, import and call
-   `agentic_quant.run_workflow()` directly:
+   without invoking the CLI entry point, import from `agentic_quant` directly.
+   The package exposes both a ready-made `run_workflow` helper and a
+   lower-level `build_pipeline` constructor if you want to customize agents
+   before running them:
 
    ```python
-   from agentic_quant import run_workflow
+   from agentic_quant import build_pipeline, run_workflow
 
-   report = run_workflow(
-       tickers=("TECH", "HEALTH", "ENERGY", "UTIL"),
-       periods=504,
-       target_return=0.12,
-   )
+   # One-liner that executes the default pipeline and returns the report text.
+   report = run_workflow(target_return=0.12)
    print(report)
+
+   # Or build the pipeline, swap or inspect agents, then execute manually.
+   pipeline = build_pipeline(target_return=0.12)
+   pipeline.append(MyCustomAgent())
+   board = pipeline.run()
+   print(board["report"])
    ```
+
+### Using real market data via Yahoo Finance
+
+The default pipeline relies on a synthetic `DataAgent` that generates lognormal
+price paths.  To work with real equities, install the optional dependencies and
+swap in the `YahooFinanceDataAgent` when constructing the workflow:
+
+```bash
+pip install yfinance pandas beautifulsoup4
+```
+
+```python
+from agentic_quant import YahooFinanceDataAgent, run_workflow
+
+tickers = ["AAPL", "MSFT", "GOOG", "AMZN"]
+data_agent = YahooFinanceDataAgent(tickers, period="3y", min_history=252)
+
+report = run_workflow(tickers=tickers, data_agent=data_agent)
+print(report)
+```
+
+The Yahoo-backed agent downloads adjusted close prices, enforces a minimum
+history length, and passes the resulting numpy arrays to the downstream signal
+and risk agents.  You can customize parameters such as `start`/`end` dates,
+`period`, or `interval` to align with your research horizon.
+
+### Optimizing an S&P 500 universe
+
+To spin up the full pipeline with the current S&P 500 constituents, leverage
+the helper utilities exposed at the package root.  They scrape the official
+Wikipedia constituents table to build the ticker universe and then stream
+historical prices from Yahoo Finance into the workflow automatically (an
+internet connection is required for both steps):
+
+```python
+from agentic_quant import run_sp500_workflow
+
+# Run against the entire index with five years of daily history.
+report = run_sp500_workflow(target_return=0.10)
+print(report)
+```
+
+If you would like to prototype with a smaller slice of the index, supply
+`max_tickers` when building the pipeline.  The helper ensures the identifiers
+are normalized (e.g., converting `BRK.B` to the Yahoo-compatible `BRK-B`) and
+will raise an informative error if the optional dependencies (``requests`` and
+``beautifulsoup4`` in addition to ``yfinance``/``pandas``) are missing.  You can
+also access the raw list of constituents with `get_sp500_tickers()` if you want
+to perform custom filtering before wiring up the workflow.
 
 ## Extending the model
 

@@ -129,6 +129,12 @@ The script fetches the current S&P 500 constituents from Wikipedia before
 requesting daily closes via `pandas_datareader`, making it easy to switch
 between data providers without touching the rest of the workflow.
 
+When no explicit `--start`/`--end` dates are supplied, the runner defaults to a
+five-year window ending today.  If you pass a future start or end date, the
+agent automatically clamps the request to the latest available trading session
+and records the adjustment under `data_warnings` so you can confirm the
+resolved download range.
+
 ### Optimizing rebalancing strategies
 
 Every pipeline constructed through `build_pipeline` now includes a

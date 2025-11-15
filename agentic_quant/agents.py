@@ -234,13 +234,50 @@ class PandasDataReaderDataAgent:
                 "pandas_datareader is required to fetch historical market data"
             ) from exc
 
-        start = self._start
-        end = self._end
-        if start is None:
-            default_start = date.today() - timedelta(days=365 * 5)
-            start = default_start.isoformat()
-        if end is None:
-            end = date.today().isoformat()
+        start_input = self._start
+        end_input = self._end
+        today = date.today()
+        default_start_date = today - timedelta(days=365 * 5)
+
+        if start_input is None:
+            start_date = default_start_date
+            start_adjusted = False
+        else:
+            try:
+                start_date = date.fromisoformat(start_input)
+            except ValueError as exc:  # pragma: no cover - user input validation
+                raise ValueError(
+                    f"Invalid start date '{start_input}'. Expected YYYY-MM-DD format."
+                ) from exc
+            if start_date > today:
+                start_date = default_start_date
+                start_adjusted = True
+            else:
+                start_adjusted = False
+
+        if end_input is None:
+            end_date = today
+            end_adjusted = False
+        else:
+            try:
+                end_date = date.fromisoformat(end_input)
+            except ValueError as exc:  # pragma: no cover - user input validation
+                raise ValueError(
+                    f"Invalid end date '{end_input}'. Expected YYYY-MM-DD format."
+                ) from exc
+            if end_date > today:
+                end_date = today
+                end_adjusted = True
+            else:
+                end_adjusted = False
+
+        if start_date > end_date:
+            raise ValueError(
+                "Start date must be on or before the end date after adjustments."
+            )
+
+        start = start_date.isoformat()
+        end = end_date.isoformat()
 
         frames: list[pd.Series] = []
         failed: list[str] = []
@@ -330,10 +367,18 @@ class PandasDataReaderDataAgent:
         )
         blackboard["market_data"] = market_data
 
-        if failed:
+        if failed or start_adjusted or end_adjusted:
             existing = blackboard.get("data_warnings", {})
             warnings = dict(existing)
-            warnings["missing_tickers"] = sorted(set(failed))
+            if failed:
+                warnings["missing_tickers"] = sorted(set(failed))
+            if start_adjusted or end_adjusted:
+                warnings["date_adjustments"] = {
+                    "start": start_input,
+                    "end": end_input,
+                    "resolved_start": start,
+                    "resolved_end": end,
+                }
             blackboard["data_warnings"] = warnings
 
 

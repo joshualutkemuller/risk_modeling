@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Iterable, List, Sequence
 
 import numpy as np
@@ -179,6 +180,110 @@ class YahooFinanceDataAgent:
             raise ValueError(f"Missing data for tickers: {', '.join(missing)}")
         prices = prices.loc[:, self._tickers]
 
+        prices_np = prices.to_numpy(dtype=float)
+        returns_np = np.diff(prices_np, axis=0) / prices_np[:-1]
+
+        market_data = MarketData(
+            tickers=self._tickers, prices=prices_np, returns=returns_np
+        )
+        blackboard["market_data"] = market_data
+
+
+class PandasDataReaderDataAgent:
+    """Fetches historical prices using :mod:`pandas_datareader`."""
+
+    def __init__(
+        self,
+        tickers: Sequence[str],
+        *,
+        data_source: str = "stooq",
+        start: str | None = None,
+        end: str | None = None,
+        min_history: int = 252,
+    ) -> None:
+        if not tickers:
+            raise ValueError("tickers must contain at least one symbol")
+        if min_history < 2:
+            raise ValueError("min_history must be at least 2")
+        self.name = "data_agent"
+        self._tickers = list(tickers)
+        self._data_source = data_source
+        self._start = start
+        self._end = end
+        self._min_history = int(min_history)
+
+    def run(self, blackboard: Blackboard) -> None:
+        try:
+            import pandas as pd  # type: ignore
+        except ImportError as exc:  # pragma: no cover - defensive import
+            raise RuntimeError(
+                "pandas is required to fetch historical data via pandas_datareader"
+            ) from exc
+
+        try:
+            from pandas_datareader import data as pdr  # type: ignore
+        except ImportError as exc:  # pragma: no cover - defensive import
+            raise RuntimeError(
+                "pandas_datareader is required to fetch historical market data"
+            ) from exc
+
+        start = self._start
+        end = self._end
+        if start is None:
+            default_start = date.today() - timedelta(days=365 * 5)
+            start = default_start.isoformat()
+        if end is None:
+            end = date.today().isoformat()
+
+        frames: list[pd.Series] = []
+        for ticker in self._tickers:
+            try:
+                frame = pdr.DataReader(
+                    ticker,
+                    self._data_source,
+                    start=start,
+                    end=end,
+                )
+            except Exception as exc:  # pragma: no cover - network / API errors
+                raise RuntimeError(
+                    f"Failed to download data for {ticker} from {self._data_source}"
+                ) from exc
+
+            if frame.empty:
+                raise ValueError(
+                    f"No price history returned for {ticker} from {self._data_source}"
+                )
+
+            frame = frame.sort_index()
+            if "Adj Close" in frame:
+                series = frame["Adj Close"].copy()
+            elif "Close" in frame:
+                series = frame["Close"].copy()
+            else:
+                raise ValueError(
+                    "Unable to locate close price columns in pandas_datareader output"
+                )
+
+            series = series.dropna()
+            if series.empty:
+                raise ValueError(
+                    f"Price history for {ticker} is empty after dropping missing values"
+                )
+
+            frames.append(series.rename(ticker))
+
+        prices = pd.concat(frames, axis=1, join="inner").dropna(how="any")
+
+        if prices.shape[0] < self._min_history:
+            raise ValueError(
+                "Not enough observations returned from pandas_datareader for the requested window"
+            )
+
+        missing = [ticker for ticker in self._tickers if ticker not in prices.columns]
+        if missing:
+            raise ValueError(f"Missing data for tickers: {', '.join(missing)}")
+
+        prices = prices.loc[:, self._tickers]
         prices_np = prices.to_numpy(dtype=float)
         returns_np = np.diff(prices_np, axis=0) / prices_np[:-1]
 

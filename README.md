@@ -78,6 +78,38 @@ history length, and passes the resulting numpy arrays to the downstream signal
 and risk agents.  You can customize parameters such as `start`/`end` dates,
 `period`, or `interval` to align with your research horizon.
 
+### Pulling prices with pandas_datareader
+
+If your environment already uses `pandas_datareader`, swap in the
+`PandasDataReaderDataAgent` and optionally call the dedicated runner script
+[`run_sp500.py`](run_sp500.py).  The agent defaults to the "stooq" data source
+but supports any backend accepted by `pandas_datareader.DataReader`:
+
+```bash
+pip install pandas pandas_datareader beautifulsoup4 requests
+```
+
+```python
+from agentic_quant import PandasDataReaderDataAgent, build_pipeline, get_sp500_tickers
+
+tickers = get_sp500_tickers(limit=50)
+data_agent = PandasDataReaderDataAgent(tickers, data_source="stooq", min_history=252)
+
+pipeline = build_pipeline(tickers=tickers, data_agent=data_agent)
+board = pipeline.run()
+print(board["report"])
+```
+
+Running the included `run_sp500.py` script wraps the same setup in a CLI:
+
+```bash
+python run_sp500.py --max-tickers 50 --data-source stooq --min-history 300
+```
+
+The script fetches the current S&P 500 constituents from Wikipedia before
+requesting daily closes via `pandas_datareader`, making it easy to switch
+between data providers without touching the rest of the workflow.
+
 ### Optimizing an S&P 500 universe
 
 To spin up the full pipeline with the current S&P 500 constituents, leverage

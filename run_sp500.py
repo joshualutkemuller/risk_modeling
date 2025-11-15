@@ -1,4 +1,4 @@
-"""Runner script for executing the S&P 500 agentic workflow."""
+"""Runner script for executing the S&P 500 agentic workflow via pandas_datareader."""
 
 from __future__ import annotations
 
@@ -6,14 +6,18 @@ import argparse
 import sys
 from typing import Optional
 
-from agentic_quant import run_sp500_workflow
+from agentic_quant import (
+    PandasDataReaderDataAgent,
+    build_pipeline,
+    get_sp500_tickers,
+)
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Execute the agentic quant workflow configured for the current "
-            "S&P 500 universe fetched from Yahoo Finance."
+            "S&P 500 universe using pandas_datareader to source historical prices."
         )
     )
     parser.add_argument(
@@ -26,16 +30,10 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--period",
-        type=str,
-        default="5y",
-        help="Historical window to request from Yahoo Finance (e.g., '1y', 'max').",
-    )
-    parser.add_argument(
         "--start",
         type=str,
         default=None,
-        help="Explicit start date (YYYY-MM-DD) to override the period argument.",
+        help="Start date (YYYY-MM-DD) for price history. Defaults to 5 years ago.",
     )
     parser.add_argument(
         "--end",
@@ -44,10 +42,13 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Explicit end date (YYYY-MM-DD) for price history.",
     )
     parser.add_argument(
-        "--interval",
+        "--data-source",
         type=str,
-        default="1d",
-        help="Sampling frequency for prices (e.g., '1d', '1wk', '1mo').",
+        default="stooq",
+        help=(
+            "pandas_datareader source to use (e.g., 'stooq', 'av', 'fred'). "
+            "Defaults to 'stooq'."
+        ),
     )
     parser.add_argument(
         "--min-history",
@@ -68,16 +69,22 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
 
-    report = run_sp500_workflow(
-        max_tickers=args.max_tickers,
-        period=args.period,
+    tickers = get_sp500_tickers(limit=args.max_tickers)
+    data_agent = PandasDataReaderDataAgent(
+        tickers,
+        data_source=args.data_source,
         start=args.start,
         end=args.end,
-        interval=args.interval,
         min_history=args.min_history,
-        target_return=args.target_return,
     )
-
+    pipeline = build_pipeline(
+        tickers=tickers,
+        periods=args.min_history + 1,
+        target_return=args.target_return,
+        data_agent=data_agent,
+    )
+    board = pipeline.run()
+    report = board["report"]
     print(report)
     return 0
 

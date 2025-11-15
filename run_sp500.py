@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from typing import Optional, Sequence
+from typing import Optional
 
 from agentic_quant import (
     PandasDataReaderDataAgent,
@@ -152,6 +153,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"{rebalancing_report.recommended_frequency} trading days",
             file=sys.stderr,
         )
+    )
+    board = pipeline.run()
     report = board["report"]
     print(report)
     return 0

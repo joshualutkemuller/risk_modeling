@@ -317,6 +317,9 @@ class PandasDataReaderDataAgent:
 
         prices = prices.loc[:, available]
 
+            raise ValueError(f"Missing data for tickers: {', '.join(missing)}")
+
+        prices = prices.loc[:, self._tickers]
         prices_np = prices.to_numpy(dtype=float)
         returns_np = np.diff(prices_np, axis=0) / prices_np[:-1]
 
@@ -330,6 +333,10 @@ class PandasDataReaderDataAgent:
             warnings = dict(existing)
             warnings["missing_tickers"] = sorted(set(failed))
             blackboard["data_warnings"] = warnings
+
+            tickers=self._tickers, prices=prices_np, returns=returns_np
+        )
+        blackboard["market_data"] = market_data
 
 
 class FactorSignalAgent:

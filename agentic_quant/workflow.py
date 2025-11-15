@@ -36,6 +36,7 @@ def build_pipeline(
     :class:`~agentic_quant.rebalancing.RebalancingOptimizationAgent`; pass
     ``optimize_rebalancing=False`` to omit it or supply custom parameters such as
     ``rebalancing_frequencies`` or ``transaction_cost``.
+    :meth:`AgentPipeline.run`.
     """
 
     agents: list[Agent] = [
@@ -55,6 +56,9 @@ def build_pipeline(
         )
 
     agents.append(ReportAgent())
+
+        ReportAgent(),
+    ]
 
     return AgentPipeline(agents)
 
@@ -105,6 +109,7 @@ def build_sp500_pipeline(
     wires the resulting data agent into the standard workflow.  Rebalancing
     optimization is enabled by default; use ``optimize_rebalancing=False`` if you
     prefer to skip that step or pass explicit parameters for the simulation.
+    wires the resulting data agent into the standard workflow.
     """
 
     tickers = get_sp500_tickers(limit=max_tickers)

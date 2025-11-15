@@ -15,6 +15,11 @@ from .agents import (
     RiskOverlayAgent,
     ReportAgent,
 )
+from .rebalancing import (
+    RebalancingOptimizationAgent,
+    RebalancingReport,
+    RebalancingScenario,
+)
 from .universes import get_sp500_tickers
 from .workflow import (
     build_pipeline,
@@ -39,6 +44,9 @@ __all__ = [
     "PortfolioConstructionAgent",
     "RiskOverlayAgent",
     "ReportAgent",
+    "RebalancingOptimizationAgent",
+    "RebalancingReport",
+    "RebalancingScenario",
     "get_sp500_tickers",
     "build_pipeline",
     "build_sp500_pipeline",

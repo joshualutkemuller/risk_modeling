@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Sequence, TYPE_CHECKING
 
 import numpy as np
 
 from .framework import Blackboard
 from mean_variance import MeanVarianceOptimizer, PortfolioPerformance
+
+if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    from .rebalancing import RebalancingReport
 
 
 @dataclass(frozen=True)
@@ -501,5 +504,29 @@ class ReportAgent:
             f"gross leverage={overlay['gross_leverage']:.2f}, "
             f"max single weight={overlay['max_single_weight']:.2%}"
         )
+
+        rebalancing_report: "RebalancingReport | None" = blackboard.get(
+            "rebalancing_report"
+        )
+        if rebalancing_report:
+            lines.append("\nRebalancing strategy analysis:")
+            for scenario in rebalancing_report.scenarios:
+                lines.append(
+                    "  Every "
+                    f"{scenario.frequency} trading days: "
+                    f"net return {scenario.net_annualized_return:.2%}, "
+                    f"gross return {scenario.annualized_return:.2%}, "
+                    f"turnover {scenario.average_turnover:.2%}, "
+                    f"annual cost {scenario.expected_annual_cost:.2%}"
+                )
+            lines.append(
+                "Recommended cadence: rebalance every "
+                f"{rebalancing_report.recommended_frequency} trading days"
+            )
+            if rebalancing_report.transaction_cost > 0:
+                lines.append(
+                    "(transaction cost assumption: "
+                    f"{rebalancing_report.transaction_cost:.2%} per unit turnover)"
+                )
 
         blackboard["report"] = "\n".join(lines)

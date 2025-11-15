@@ -60,7 +60,7 @@ price paths.  To work with real equities, install the optional dependencies and
 swap in the `YahooFinanceDataAgent` when constructing the workflow:
 
 ```bash
-pip install yfinance pandas
+pip install yfinance pandas beautifulsoup4
 ```
 
 ```python
@@ -81,8 +81,10 @@ and risk agents.  You can customize parameters such as `start`/`end` dates,
 ### Optimizing an S&P 500 universe
 
 To spin up the full pipeline with the current S&P 500 constituents, leverage
-the helper utilities exposed at the package root.  They source the ticker list
-via Yahoo Finance and stream historical prices into the workflow automatically:
+the helper utilities exposed at the package root.  They scrape the official
+Wikipedia constituents table to build the ticker universe and then stream
+historical prices from Yahoo Finance into the workflow automatically (an
+internet connection is required for both steps):
 
 ```python
 from agentic_quant import run_sp500_workflow
@@ -95,9 +97,10 @@ print(report)
 If you would like to prototype with a smaller slice of the index, supply
 `max_tickers` when building the pipeline.  The helper ensures the identifiers
 are normalized (e.g., converting `BRK.B` to the Yahoo-compatible `BRK-B`) and
-will raise an informative error if the optional dependencies are missing.  You
-can also access the raw list of constituents with `get_sp500_tickers()` if you
-want to perform custom filtering before wiring up the workflow.
+will raise an informative error if the optional dependencies (``requests`` and
+``beautifulsoup4`` in addition to ``yfinance``/``pandas``) are missing.  You can
+also access the raw list of constituents with `get_sp500_tickers()` if you want
+to perform custom filtering before wiring up the workflow.
 
 ## Extending the model
 

@@ -5,13 +5,17 @@ from __future__ import annotations
 from typing import Iterable, List
 
 
+WIKIPEDIA_SP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+
+
 def get_sp500_tickers(limit: int | None = None) -> List[str]:
     """Return the current S&P 500 constituents as Yahoo Finance tickers.
 
-    The tickers are sourced via :mod:`yfinance`.  Yahoo represents tickers with
-    periods using hyphens (for example ``BRK-B`` instead of ``BRK.B``), so this
-    helper normalizes the identifiers accordingly and preserves the published
-    order from the index provider.
+    The tickers are sourced from the official S&P 500 constituents table hosted
+    on Wikipedia.  Identifiers that contain periods are normalized to the
+    hyphenated variants that Yahoo Finance expects (for example ``BRK-B``
+    instead of ``BRK.B``).  Duplicates are removed while preserving the order
+    published in the source table.
 
     Args:
         limit: Optionally cap the number of tickers that are returned.  This can
@@ -23,32 +27,61 @@ def get_sp500_tickers(limit: int | None = None) -> List[str]:
         :class:`~agentic_quant.agents.YahooFinanceDataAgent` or other agents.
 
     Raises:
-        RuntimeError: If :mod:`yfinance` is not installed in the environment.
-        ValueError: If ``limit`` is provided but not positive, or if no tickers
-            are returned from :mod:`yfinance`.
+        RuntimeError: If the required HTML parsing dependencies are missing or
+            the constituents table cannot be retrieved from Wikipedia.
+        ValueError: If ``limit`` is provided but not positive, or if the
+            Wikipedia table contains no tickers after normalization.
     """
 
     if limit is not None and limit <= 0:
         raise ValueError("limit must be positive when provided")
 
     try:
-        import yfinance as yf  # type: ignore
+        import requests  # type: ignore
+        from bs4 import BeautifulSoup  # type: ignore
     except ImportError as exc:  # pragma: no cover - defensive import
         raise RuntimeError(
-            "yfinance is required to retrieve the S&P 500 universe"
+            "requests and beautifulsoup4 are required to retrieve the S&P 500 universe"
         ) from exc
 
-    raw_tickers: Iterable[str]
-    tickers = yf.tickers_sp500()
-    if isinstance(tickers, str):
-        raw_tickers = tickers.split()
-    else:
-        raw_tickers = tickers
+    try:
+        response = requests.get(
+            WIKIPEDIA_SP500_URL,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; AgenticQuant/1.0; +https://github.com/)"
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            "Failed to download the S&P 500 constituents from Wikipedia"
+        ) from exc
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    table = soup.find("table", {"id": "constituents"})
+    if table is None:
+        raise RuntimeError(
+            "Unable to locate the S&P 500 constituents table on the Wikipedia page"
+        )
+
+    body = table.find("tbody") or table
+    rows = body.find_all("tr") if body else []
+    raw_tickers: Iterable[str] = []
+    symbols: List[str] = []
+    for row in rows:
+        cells = row.find_all("td")
+        if not cells:
+            continue
+        ticker = cells[0].get_text(strip=True)
+        if ticker:
+            symbols.append(ticker)
+    raw_tickers = symbols
 
     normalized: List[str] = []
     seen = set()
     for ticker in raw_tickers:
-        clean = ticker.strip().upper().replace(".", "-")
+        clean = str(ticker).strip().upper().replace(".", "-")
         if not clean or clean in seen:
             continue
         seen.add(clean)

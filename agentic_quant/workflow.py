@@ -14,6 +14,7 @@ from .agents import (
     YahooFinanceDataAgent,
 )
 from .framework import Agent, AgentPipeline
+from .rebalancing import RebalancingOptimizationAgent
 from .universes import get_sp500_tickers
 
 
@@ -22,11 +23,19 @@ def build_pipeline(
     periods: int = 504,
     target_return: float | None = 0.12,
     data_agent: Agent | None = None,
+    *,
+    optimize_rebalancing: bool = True,
+    rebalancing_frequencies: Sequence[int] | None = None,
+    transaction_cost: float = 0.001,
 ) -> AgentPipeline:
     """Construct the pipeline without executing it.
 
     This is useful when callers want to inspect or swap agents before running
     the workflow.  The returned pipeline can be executed via
+    :meth:`AgentPipeline.run`.  By default the pipeline includes a
+    :class:`~agentic_quant.rebalancing.RebalancingOptimizationAgent`; pass
+    ``optimize_rebalancing=False`` to omit it or supply custom parameters such as
+    ``rebalancing_frequencies`` or ``transaction_cost``.
     :meth:`AgentPipeline.run`.
     """
 
@@ -36,6 +45,18 @@ def build_pipeline(
         RiskAgent(),
         PortfolioConstructionAgent(target_return=target_return),
         RiskOverlayAgent(),
+    ]
+
+    if optimize_rebalancing:
+        agents.append(
+            RebalancingOptimizationAgent(
+                frequencies=rebalancing_frequencies,
+                transaction_cost=transaction_cost,
+            )
+        )
+
+    agents.append(ReportAgent())
+
         ReportAgent(),
     ]
 
@@ -47,6 +68,10 @@ def run_workflow(
     periods: int = 504,
     target_return: float | None = 0.12,
     data_agent: Agent | None = None,
+    *,
+    optimize_rebalancing: bool = True,
+    rebalancing_frequencies: Sequence[int] | None = None,
+    transaction_cost: float = 0.001,
 ) -> str:
     """Execute the full pipeline and return the synthesized report."""
 
@@ -55,6 +80,9 @@ def run_workflow(
         periods=periods,
         target_return=target_return,
         data_agent=data_agent,
+        optimize_rebalancing=optimize_rebalancing,
+        rebalancing_frequencies=rebalancing_frequencies,
+        transaction_cost=transaction_cost,
     )
     board = pipeline.run()
     return board["report"]
@@ -70,11 +98,17 @@ def build_sp500_pipeline(
     auto_adjust: bool = True,
     min_history: int = 252,
     target_return: float | None = 0.12,
+    optimize_rebalancing: bool = True,
+    rebalancing_frequencies: Sequence[int] | None = None,
+    transaction_cost: float = 0.001,
 ) -> AgentPipeline:
     """Construct a pipeline configured for the S&P 500 universe.
 
     This helper retrieves the current S&P 500 constituents via
     :func:`get_sp500_tickers`, downloads price history from Yahoo Finance, and
+    wires the resulting data agent into the standard workflow.  Rebalancing
+    optimization is enabled by default; use ``optimize_rebalancing=False`` if you
+    prefer to skip that step or pass explicit parameters for the simulation.
     wires the resulting data agent into the standard workflow.
     """
 
@@ -94,6 +128,9 @@ def build_sp500_pipeline(
         periods=min_history + 1,
         target_return=target_return,
         data_agent=data_agent,
+        optimize_rebalancing=optimize_rebalancing,
+        rebalancing_frequencies=rebalancing_frequencies,
+        transaction_cost=transaction_cost,
     )
 
 
@@ -107,6 +144,9 @@ def run_sp500_workflow(
     auto_adjust: bool = True,
     min_history: int = 252,
     target_return: float | None = 0.12,
+    optimize_rebalancing: bool = True,
+    rebalancing_frequencies: Sequence[int] | None = None,
+    transaction_cost: float = 0.001,
 ) -> str:
     """Execute the S&P 500 configured pipeline and return the report."""
 
@@ -119,6 +159,9 @@ def run_sp500_workflow(
         auto_adjust=auto_adjust,
         min_history=min_history,
         target_return=target_return,
+        optimize_rebalancing=optimize_rebalancing,
+        rebalancing_frequencies=rebalancing_frequencies,
+        transaction_cost=transaction_cost,
     )
     board = pipeline.run()
     return board["report"]

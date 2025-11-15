@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Sequence, TYPE_CHECKING
 
 import numpy as np
 
 from .framework import Blackboard
 from mean_variance import MeanVarianceOptimizer, PortfolioPerformance
+
+if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    from .rebalancing import RebalancingReport
 
 
 @dataclass(frozen=True)
@@ -200,6 +203,7 @@ class PandasDataReaderDataAgent:
         start: str | None = None,
         end: str | None = None,
         min_history: int = 252,
+        skip_failed: bool = True,
     ) -> None:
         if not tickers:
             raise ValueError("tickers must contain at least one symbol")
@@ -211,6 +215,7 @@ class PandasDataReaderDataAgent:
         self._start = start
         self._end = end
         self._min_history = int(min_history)
+        self._skip_failed = bool(skip_failed)
 
     def run(self, blackboard: Blackboard) -> None:
         try:
@@ -236,6 +241,7 @@ class PandasDataReaderDataAgent:
             end = date.today().isoformat()
 
         frames: list[pd.Series] = []
+        failed: list[str] = []
         for ticker in self._tickers:
             try:
                 frame = pdr.DataReader(
@@ -245,11 +251,17 @@ class PandasDataReaderDataAgent:
                     end=end,
                 )
             except Exception as exc:  # pragma: no cover - network / API errors
+                if self._skip_failed:
+                    failed.append(ticker)
+                    continue
                 raise RuntimeError(
                     f"Failed to download data for {ticker} from {self._data_source}"
                 ) from exc
 
             if frame.empty:
+                if self._skip_failed:
+                    failed.append(ticker)
+                    continue
                 raise ValueError(
                     f"No price history returned for {ticker} from {self._data_source}"
                 )
@@ -260,17 +272,29 @@ class PandasDataReaderDataAgent:
             elif "Close" in frame:
                 series = frame["Close"].copy()
             else:
+                if self._skip_failed:
+                    failed.append(ticker)
+                    continue
                 raise ValueError(
                     "Unable to locate close price columns in pandas_datareader output"
                 )
 
             series = series.dropna()
             if series.empty:
+                if self._skip_failed:
+                    failed.append(ticker)
+                    continue
                 raise ValueError(
                     f"Price history for {ticker} is empty after dropping missing values"
                 )
 
             frames.append(series.rename(ticker))
+
+        if not frames:
+            raise RuntimeError(
+                "Failed to download market data for all requested tickers. "
+                f"Examples of failures: {', '.join(failed[:5])}"
+            )
 
         prices = pd.concat(frames, axis=1, join="inner").dropna(how="any")
 
@@ -281,6 +305,18 @@ class PandasDataReaderDataAgent:
 
         missing = [ticker for ticker in self._tickers if ticker not in prices.columns]
         if missing:
+            if not self._skip_failed:
+                raise ValueError(f"Missing data for tickers: {', '.join(missing)}")
+            failed.extend(missing)
+
+        available = [ticker for ticker in self._tickers if ticker not in failed]
+        if not available:
+            raise RuntimeError(
+                "Unable to assemble any price history from pandas_datareader after dropping failures"
+            )
+
+        prices = prices.loc[:, available]
+
             raise ValueError(f"Missing data for tickers: {', '.join(missing)}")
 
         prices = prices.loc[:, self._tickers]
@@ -288,6 +324,16 @@ class PandasDataReaderDataAgent:
         returns_np = np.diff(prices_np, axis=0) / prices_np[:-1]
 
         market_data = MarketData(
+            tickers=tuple(available), prices=prices_np, returns=returns_np
+        )
+        blackboard["market_data"] = market_data
+
+        if failed:
+            existing = blackboard.get("data_warnings", {})
+            warnings = dict(existing)
+            warnings["missing_tickers"] = sorted(set(failed))
+            blackboard["data_warnings"] = warnings
+
             tickers=self._tickers, prices=prices_np, returns=returns_np
         )
         blackboard["market_data"] = market_data
@@ -465,5 +511,29 @@ class ReportAgent:
             f"gross leverage={overlay['gross_leverage']:.2f}, "
             f"max single weight={overlay['max_single_weight']:.2%}"
         )
+
+        rebalancing_report: "RebalancingReport | None" = blackboard.get(
+            "rebalancing_report"
+        )
+        if rebalancing_report:
+            lines.append("\nRebalancing strategy analysis:")
+            for scenario in rebalancing_report.scenarios:
+                lines.append(
+                    "  Every "
+                    f"{scenario.frequency} trading days: "
+                    f"net return {scenario.net_annualized_return:.2%}, "
+                    f"gross return {scenario.annualized_return:.2%}, "
+                    f"turnover {scenario.average_turnover:.2%}, "
+                    f"annual cost {scenario.expected_annual_cost:.2%}"
+                )
+            lines.append(
+                "Recommended cadence: rebalance every "
+                f"{rebalancing_report.recommended_frequency} trading days"
+            )
+            if rebalancing_report.transaction_cost > 0:
+                lines.append(
+                    "(transaction cost assumption: "
+                    f"{rebalancing_report.transaction_cost:.2%} per unit turnover)"
+                )
 
         blackboard["report"] = "\n".join(lines)

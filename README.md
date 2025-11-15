@@ -30,8 +30,10 @@ This repository contains two complementary components:
    ```
 
    You will receive a multi-section report summarizing simulated data, signal
-   estimates, risk analytics, and the resulting portfolio after a risk overlay
-   agent applies leverage and concentration limits.
+   estimates, risk analytics, the resulting portfolio after a risk overlay
+   agent applies leverage and concentration limits, and recommended
+   rebalancing cadences based on historical drift and transaction cost
+   assumptions.
 
    If you prefer to integrate the workflow into your own script or notebook
    without invoking the CLI entry point, import from `agentic_quant` directly.
@@ -51,6 +53,7 @@ This repository contains two complementary components:
    pipeline.append(MyCustomAgent())
    board = pipeline.run()
    print(board["report"])
+   print(board.get("rebalancing_report"))
    ```
 
 ### Using real market data via Yahoo Finance
@@ -93,22 +96,66 @@ pip install pandas pandas_datareader beautifulsoup4 requests
 from agentic_quant import PandasDataReaderDataAgent, build_pipeline, get_sp500_tickers
 
 tickers = get_sp500_tickers(limit=50)
-data_agent = PandasDataReaderDataAgent(tickers, data_source="stooq", min_history=252)
+data_agent = PandasDataReaderDataAgent(
+    tickers,
+    data_source="stooq",
+    min_history=252,
+    skip_failed=True,
+)
 
 pipeline = build_pipeline(tickers=tickers, data_agent=data_agent)
 board = pipeline.run()
 print(board["report"])
+print(board.get("data_warnings", {}))
 ```
 
-Running the included `run_sp500.py` script wraps the same setup in a CLI:
+Running the included `run_sp500.py` script wraps the same setup in a CLI.  Any
+tickers that fail to download are automatically dropped (with a warning on
+stderr) so transient outages or partial coverage from the selected backend do
+not halt the entire workflow.  You can also tune the rebalancing analysis from
+the command line—override the default trading-day cadences, change the assumed
+per-unit transaction cost, or disable the simulation entirely if desired:
 
 ```bash
-python run_sp500.py --max-tickers 50 --data-source stooq --min-history 300
+python run_sp500.py \
+    --max-tickers 50 \
+    --data-source stooq \
+    --min-history 300 \
+    --rebalance-frequencies 1,5,21,63 \
+    --transaction-cost 0.0005
 ```
 
 The script fetches the current S&P 500 constituents from Wikipedia before
 requesting daily closes via `pandas_datareader`, making it easy to switch
 between data providers without touching the rest of the workflow.
+
+### Optimizing rebalancing strategies
+
+Every pipeline constructed through `build_pipeline` now includes a
+`RebalancingOptimizationAgent` by default.  The agent simulates portfolio drift
+under multiple trading-day cadences, estimates the turnover required to return
+to the target allocation, and computes the net performance impact after applying
+per-unit transaction costs.  The synthesized report highlights the recommended
+rebalancing frequency, while the full diagnostics are stored on the blackboard
+under `"rebalancing_report"` for programmatic consumption:
+
+```python
+from agentic_quant import build_pipeline
+
+pipeline = build_pipeline(
+    target_return=0.1,
+    rebalancing_frequencies=(1, 5, 10, 21, 63),
+    transaction_cost=0.00025,
+)
+board = pipeline.run()
+print(board["report"])
+print(board["rebalancing_report"].recommended_frequency)
+```
+
+If you prefer to handle rebalancing externally, disable the agent by passing
+`optimize_rebalancing=False` to `build_pipeline`, `run_workflow`, or the S&P 500
+helpers.  This keeps the legacy report structure intact while still allowing you
+to plug in alternative post-processing steps.
 
 ### Optimizing an S&P 500 universe
 
